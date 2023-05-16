@@ -1,3 +1,9 @@
+##############################################
+#Este codigo aun no hace la redirección a los submenus
+#Cuando se solucione hacer el commit con el bug arreglado
+#Hacer el commit como "codigo_v2.py"
+
+
 """                LIBRERIAS                     """
 import os
 import matplotlib.pyplot as plt
