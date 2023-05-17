@@ -1,44 +1,47 @@
-
-
-
 """                LIBRERIAS                     """
 import os
 import matplotlib.pyplot as plt
 import time
 import numpy as np
 from matplotlib.patches import Ellipse
-
-opcion_Valida = False
 ## DEFINICION DE METODOS##
-
 # Metodos de uso general
 
 
 def seleccion():
     global opc_selected
-    try:
-        opc_selected = int(input("Escribe la opción a seleccionar: "))
-        return opc_selected
-    except ValueError:
-        opcion_incorrecta()
+    global opc_especial
+
+    while True:
+        try:
+            opc_selected = int(input("Escribe la opción a seleccionar: "))
+            opc_especial = opc_selected
+            return opc_selected, opc_especial
+        except ValueError:
+            opcion_incorrecta()
+            time.sleep(0.5)
+            limpiar_pantalla()
+            menu_principal()
 
 
 def opcion_incorrecta():
-    print("Vuelve a intentarlo: ")
+    print("Error: Opción Incorrecta")
+    print("La opción seleccionada no es un número o no es una opción disponible")
+    print("VUELVE A INTENTARLO")
 
 
 def limpiar_pantalla():
     os.system('cls' if os.name == 'nt' else 'clear')
 
-
 # Metodo para interfaz
+
+
 def menu_principal():
 
-    global opcion_Valida
     global opc_selected
+    global opc_especial
 
-    while opcion_Valida != True:
-        time.sleep(1)
+    while True:
         limpiar_pantalla()
         print("""
                 Menú Principal
@@ -69,17 +72,23 @@ def menu_principal():
         elif opc_selected == 5:
             # sub_menu_elipses()
             print("Menu en construccion")
+        elif opc_selected == 155:
+            admin()
         else:
             opcion_incorrecta()
-# definicion de metodos para los sub-menus
+
 # Metodo para interfaz
+
+
+def admin():
+    limpiar_pantalla()
+    print("Entrando al menu admin")
 
 
 def sub_menu_triangulos():
     global opc_selected
-    global opcion_Valida
 
-    while opcion_Valida != True:
+    while True:
         time.sleep(0.5)
         limpiar_pantalla()
         print("""
@@ -94,7 +103,6 @@ def sub_menu_triangulos():
         """)
 
         seleccion()
-        opc_selected = 2
         if opc_selected == 1:
             generar_TriEquilatero()
         elif opc_selected == 2:
@@ -102,7 +110,6 @@ def sub_menu_triangulos():
         elif opc_selected == 3:
             generar_TriIsoceles()
         else:
-            opcion_Valida = False
             print("Opción Invalida. Vuelve a intentarlo")
 
 
@@ -138,6 +145,7 @@ def generar_TriEscaleno():
 
 
 def generar_TriIsoceles():
+    limpiar_pantalla()
     print("TRIANGULO ISOSELES")
     a = int(input("Introduce el valor de la base (en cm): "))
     l = int(input("Introduce los valores de los lados (en cm): "))
@@ -151,8 +159,9 @@ def generar_TriIsoceles():
     ax.plot([(a/2), (a/2)], [0, l])  # Altura
     plt.show()
 
-
 # Metodo para interfaz
+
+
 def sub_menu_elipses():
     limpiar_pantalla()
     print("""
@@ -217,5 +226,4 @@ def generar_Ovoide():
     plt.show()
 
 
-while True:
-    menu_principal()
+menu_principal()
