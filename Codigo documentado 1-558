@@ -1,0 +1,558 @@
+import mysql.connector
+from getpass import getpass
+import os
+import time
+import math
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+db = None
+cursor = None
+sesion = None
+opc_selected = None
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+class bcolors:
+    OK = '\033[92m' #VERDE
+    WARNING = '\033[93m' #AMARILLO
+    FAIL = '\033[91m' #ROJO
+    RESET = '\033[0m' #REINICIAR COLOR
+
+
+def limpiar_pantalla():
+    """
+    Limpia la pantalla de la consola.
+    Utiliza el comando 'cls' en Windows y 'clear' en Unix.
+    """
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def inicializar_database():
+    """
+    Establece la conexión con la base de datos y crea el cursor.
+    """
+    try:
+        global db, cursor
+        db = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="",
+            database="proyecto"
+        )
+        cursor = db.cursor()
+
+        if db.is_connected():
+            print("CONEXION EXITOSA")
+            print("INICANDO...")
+            time.sleep(1.5)
+            limpiar_pantalla()
+    except Exception as ex:
+        print(ex)
+        print("POR FAVOR CONTACTE CON UN ADMINISTRADOR")
+        time.sleep(4)
+
+def cerrar_conex_db():
+     """
+    Cierra la conexión con la base de datos y el cursor.
+    """
+if cursor:
+        cursor.close()
+if db:
+        db.close()
+
+def register():
+     """
+    Registra un nuevo usuario en la base de datos.
+    Solicita al usuario un nombre de usuario y contraseña, verifica que las contraseñas coincidan
+    y que el nombre de usuario no esté repetido. Luego, cifra la contraseña y la guarda en la base de datos.
+    """
+while True:
+        while True:
+            limpiar_pantalla()
+            print("---------------------------------------")
+            print("|               Registro              |")
+            print("---------------------------------------")
+            username = input("Nombre de usuario: ")
+            password = input("Contraseña: ")
+            password_verify = input("Vuelve a introducir la contraseña: ")
+
+            if password == password_verify:
+                print("Las contraseñas coinciden")
+                time.sleep(1)
+                break
+            else:
+                print("Las contraseñas no coinciden, vuelve a intentarlo")
+                time.sleep(1)
+                limpiar_pantalla()
+
+        sql = "SELECT nombre_usuario FROM usuarios WHERE nombre_usuario = %s"  
+        cursor.execute(sql,(username,)) # type: ignore
+        result = cursor.fetchone()  # type: ignore
+
+        if result is None:
+            print("Registrando...")
+            time.sleep(3)
+            rol = 'user'
+            ##Se cifra la contraseña
+            cripted_password = generate_password_hash(password)
+            ##La conrtaseña se carga en la db
+            sql = "INSERT INTO usuarios (nombre_usuario, contraseña, rol, fecha_hora) VALUES (%s, %s, %s, %s)"
+            values = (username, cripted_password, rol, timestamp)
+            cursor.execute(sql, values) # type: ignore
+            db.commit() # type: ignore
+            #Se indica si el registro fue exitoso
+            limpiar_pantalla()
+            print("Usuario registrado correctamente.")
+            time.sleep(1)
+            # Registrar en el historial
+            registrar_historial(f"Registro de usuario", username)
+            break
+        else:
+            print("El usuario ya existe, vuelve a intentarlo")
+            time.sleep(1)
+
+def login():
+    global role, username, password
+    """
+    Realiza el proceso de inicio de sesión comparando el nombre de usuario y contraseña ingresados
+    con los datos almacenados en la base de datos.
+
+    Returns:
+        bool: True si el inicio de sesión es exitoso, False si falla.
+    """
+    limpiar_pantalla()
+    print("---------------------------------------")
+    print("|                Login                |")
+    print("---------------------------------------")
+    
+    username = input("Nombre de usuario: ")
+    password = getpass("Contraseña: ")
+
+    sql = "SELECT contraseña, rol FROM usuarios WHERE nombre_usuario = %s"  
+    cursor.execute(sql, (username,)) # type: ignore
+    result = cursor.fetchone() # type: ignore
+
+    if result is None:
+        print("Nombre de usuario incorrecto. Vuelve a intentarlo")
+        time.sleep(1)
+    else:
+        hashed_password = result[0]
+        role = result[1]
+        if check_password_hash(hashed_password, password):
+            limpiar_pantalla()
+            if role == "admin":
+                print("¡Bienvenido administrador!")
+                menu_home()  # Se pasa el valor de 'role' a la función menu_home()
+            else:
+                menu_home()
+            # Registrar en el historial
+            registrar_historial(f"Inicio de sesión", username)
+            return True
+        else:
+            print("Contraseña incorrecta.")
+            time.sleep(1.5)
+    return False
+
+def change_password():
+    """
+    Permite al usuario cambiar su contraseña actual ingresando su nombre de usuario, contraseña actual y la nueva contraseña.
+    """
+    limpiar_pantalla()
+    print("---------------------------------------")
+    print("|         Cambiar contraseña          |")
+    print("---------------------------------------")
+    username = input("Nombre de usuario: ")
+    current_password = getpass("Contraseña actual: ")
+    new_password = getpass("Nueva contraseña: ")
+
+    sql = "SELECT contraseña FROM usuarios WHERE nombre_usuario = %s"
+    cursor.execute(sql, (username,)) # type: ignore
+    result = cursor.fetchone() # type: ignore
+
+    if result is None:
+        print("Nombre de usuario incorrecto.")
+    else:
+        hashed_password = result[0]
+        if check_password_hash(hashed_password, current_password):
+            new_hashed_password = generate_password_hash(new_password)
+            update_sql = "UPDATE usuarios SET contraseña = %s WHERE nombre_usuario = %s"
+            cursor.execute(update_sql, (new_hashed_password, username)) # type: ignore
+            db.commit() # type: ignore
+            limpiar_pantalla()
+            print("Contraseña actualizada correctamente.")
+            # Registrar en el historial
+            registrar_historial(f"Cambio de contraseña", username)
+        else:
+            limpiar_pantalla()
+            print("Contraseña incorrecta.")
+
+def opcion_incorrecta():
+    """
+    Maneja la situación en la que se selecciona una opción incorrecta en el menú.
+
+    Imprime un mensaje de error indicando que la opción seleccionada es incorrecta y
+    motiva al usuario a intentarlo nuevamente.
+    """
+    print("Error: Opción Incorrecta")
+    print("La opción seleccionada no es un número o no es una opción disponible")
+    print("VUELVE A INTENTARLO")
+
+def menu_principal():
+    """
+    Muestra el menú principal con opciones para registro, inicio de sesión, cambio de contraseña y salir.
+    """
+    limpiar_pantalla()
+    print("---------------------------------------")
+    print("|            MENU PRINCIPAL           |")
+    print("|-------------------------------------|")
+    print("|  1.- Registro                       |")
+    print("|  2.- Login                          |")
+    print("|  3.- Cambiar contraseña             |")
+    print("|  4.- Salir                          |")
+    print("|-------------------------------------|")
+    print("|Consult Date:", timestamp, "   |")
+    print("---------------------------------------")
+
+def seleccion():
+    """
+    Esta función permite al usuario seleccionar una opción del menú.
+    Solicita al usuario que ingrese la opción seleccionada y valida que sea un número entero.
+    Si el usuario ingresa un valor no válido, se llama a la función 'opcion_incorrecta',
+    se realiza una pausa de 0.5 segundos y se limpia la pantalla de la consola.
+    Devuelve el valor de la opción seleccionada.
+    """
+    global opc_selected
+    while True:
+        try:
+            opc_selected = int(input("Escribe la opción a seleccionar: "))
+            return opc_selected
+        except ValueError:
+            limpiar_pantalla()
+            opcion_incorrecta()
+            break
+            
+def enviar_mensaje():
+    """Esta funcion nos permite ver el mensaje enviado del usuario"""
+    limpiar_pantalla()
+    print("---------------------------------------")
+    print("|          Enviar Mensaje             |")
+    print("---------------------------------------")
+    remitente = username
+    destinatario = input("Nombre de usuario destinatario: ")
+    mensaje = input("Mensaje: ")
+
+    sql = "SELECT * FROM usuarios WHERE nombre_usuario = %s"
+    cursor.execute(sql, (destinatario, )) # type: ignore
+    result = cursor.fetchone() # type: ignore
+
+    if result:
+        sql = "INSERT INTO mensajes (remite, destinatario, mensaje, fecha_hora) VALUES (%s, %s, %s, %s)"
+        values = (remitente, destinatario, mensaje, timestamp)
+        cursor.execute(sql, values) # type: ignore
+        db.commit() # type: ignore
+
+        limpiar_pantalla()
+        print("Mensaje enviado correctamente.")
+
+        # Registrar en el historial
+        registrar_historial(f"Envío de mensaje a {destinatario}", remitente)
+    else:
+        print(bcolors.WARNING + "El usuario no existe. Ingresa un usuario correcto" + bcolors.RESET)
+
+def ver_mensajes():
+    """Nos permite ver el mensaje enviado"""
+    sql = "SELECT * FROM mensajes WHERE destinatario = %s"
+    cursor.execute(sql, (username,)) # type: ignore  Pasa el parámetro como una tupla
+    result = cursor.fetchall() # type: ignore
+
+    if result:
+        limpiar_pantalla()
+        print("---------------------------------------")
+        print(f"       Mensajes recibidos ({len(result)})  ")
+        print("---------------------------------------")
+        for row in result:
+            print("Remitente:", row[1])
+            print("Mensaje:", row[3])
+            print("Fecha:", row[4])
+            print("----------------------------------------------------")
+        
+        
+    else:
+        print("Aún no has recibido mensajes")
+
+def mostrar_historial():
+    """
+    Esta función muestra el historial guardado en la base de datos.
+    Realiza una consulta SQL para obtener el historial del usuario específico.
+    Imprime el historial en la consola, mostrando el ID de referencia, la acción realizada,
+    la fecha y hora de la acción.
+    Si no hay registros en el historial, se imprime un mensaje indicando que no hay registros.
+    """
+    sql = "SELECT * FROM historial WHERE usuario = %s ORDER BY fecha_hora DESC"  # Añadir %s para incluir el valor de 'username'
+    cursor.execute(sql, (username,)) # type: ignore
+    result = cursor.fetchall() # type: ignore
+
+    if result:
+        limpiar_pantalla()
+        print("--------------------------------------------")
+        print("|                 Historial                |")
+        print("--------------------------------------------")
+        for row in result:
+            print("ID de referencia:", row[0])
+            print(bcolors.OK + "Acción:", row[1] + bcolors.RESET)
+            print("Fecha y hora:", row[2])
+            print("--------------------------------------------")
+
+    else:
+        print("No hay registros en el historial.")
+
+def borrar_historial():
+    """
+    Esta función borra todo el historial almacenado en la base de datos.
+    Solicita confirmación al usuario antes de realizar la operación.
+    Si el usuario confirma, se ejecuta una consulta SQL para borrar todos los registros de la tabla 'historial'.
+    Se confirman los cambios en la base de datos y se imprime un mensaje de confirmación.
+    Si el usuario cancela la operación, se imprime un mensaje indicando que la operación fue cancelada.
+    """
+    limpiar_pantalla()
+    confirmacion = input(bcolors.WARNING + "¿Estás seguro de que quieres borrar el historial? (s/n): " + bcolors.RESET)
+    if confirmacion.lower() == 's':
+        sql = "TRUNCATE TABLE historial"
+        cursor.execute(sql) # type: ignore
+        db.commit() # type: ignore
+        time.sleep(1)
+        print("Historial borrado correctamente.")
+    else:
+        print("Operación cancelada.")
+        time.sleep(1)
+
+def mostrar_usuarios():
+    """
+    Esta función muestra los usuarios registrados en la base de datos.
+    Realiza una consulta SQL para obtener todos los usuarios ordenados por fecha y hora.
+    Imprime los usuarios en la consola, mostrando el ID de referencia, la acción realizada,
+    la fecha y hora de la acción, y el nombre de usuario.
+    Si no hay registros de usuarios, se imprime un mensaje indicando que no hay registros.
+    """
+    limpiar_pantalla()
+    sql = "SELECT * FROM usuarios ORDER BY id DESC"
+    cursor.execute(sql) # type: ignore
+    result = cursor.fetchall() # type: ignore
+
+    if result:
+        print("------------------------------------------------")
+        print("|            Uuarios registrados               |")
+        print("------------------------------------------------")
+        limpiar_pantalla()
+        for row in result:
+            print("ID del usuario:", row[0])
+            print("Usuario:", row[1])
+            print("Rol:", row[3])
+            print("Fecha y hora de registro :", row[4])
+            print("---------------------------------------")
+    else:
+        print("No hay registros en el historial de usuarios.")
+
+def eliminar_usuario():
+    """
+    Esta función permite eliminar a un usuario del sistema.
+    Solicita el nombre de usuario a eliminar y la contraseña de administrador.
+    Si la contraseña de administrador coincide, se solicita confirmación para eliminar al usuario.
+    Si la confirmación es 's', se ejecuta una consulta SQL para eliminar al usuario de la tabla 'usuarios',
+    se confirman los cambios en la base de datos y se imprime un mensaje de confirmación.
+    Si la confirmación es 'n' o el usuario cancela la operación, se imprime un mensaje indicando que la operación fue cancelada.
+    Si la contraseña de administrador no coincide, se imprime un mensaje indicando que la contraseña no es correcta.
+    """
+    limpiar_pantalla()
+    user = input(bcolors.WARNING + "Ingresa el nombre de usuario que deseas eliminar del sistema: " + bcolors.RESET)
+    verify = getpass(bcolors.WARNING + "Ingresa tu contraseña administrador: " + bcolors.RESET)
+
+    # Verificar si el usuario existe
+    sql = "SELECT * FROM usuarios WHERE nombre_usuario = %s;"
+    cursor.execute(sql, (user,)) # type: ignore
+    result = cursor.fetchone() #type: ignore # Obtener el primer resultado
+
+    if result:
+        # El usuario existe en el sistema
+        if verify == password:
+            print(bcolors.OK + "\nLas contraseñas coinciden\n" + bcolors.RESET)
+            time.sleep(0.5)
+            confirmacion = input(bcolors.FAIL + "¿Estás seguro de que quieres eliminar al usuario? (s/n): " + bcolors.RESET)
+            if confirmacion.lower() == 's':
+                time.sleep(1)
+                print(bcolors.WARNING + "Eliminando usuario..." + bcolors.RESET)
+                sql = "DELETE FROM usuarios WHERE nombre_usuario = %s;"
+                cursor.execute(sql, (user,)) # type: ignore
+                db.commit()  # type: ignore
+                time.sleep(2)
+                print(bcolors.OK + "Usuario eliminado exitosamente" + bcolors.RESET)
+                # Registrar en el historial
+                registrar_historial(f"Eliminación de usuario", user)
+            else: 
+                print("Operación cancelada.")
+                time.sleep(1)
+        else:
+            print("La contraseña no es correcta.")
+            print("Cancelando operación...")
+            time.sleep(1)
+    else:
+        # El usuario no existe en el sistema
+        print(bcolors.WARNING + "El usuario no existe" + bcolors.RESET)
+
+def mostrar_historial_admin():
+    """
+    Muestra el historial de acciones realizadas por el administrador.
+    Consulta la base de datos para obtener el historial ordenado por fecha y hora,
+    e imprime la información en la pantalla.
+    """
+    sql = "SELECT * FROM historial ORDER BY fecha_hora ASC"
+    cursor.execute(sql) # type: ignore
+    result = cursor.fetchall() # type: ignore
+
+    if result:
+        limpiar_pantalla()
+        print("---------------------------------------")
+        print("|         Historial de Usuarios       |")
+        print("---------------------------------------")
+        for row in result:
+            print("ID de referencia:", row[0])
+            print(bcolors.OK + "Acción:", row[1] + bcolors.RESET)
+            print("Fecha y hora:", row[2])
+            print(bcolors.OK + "Usuario:", row[3] + bcolors.RESET)
+            print("---------------------------------------")
+    else:
+        print("No hay registros en el historial de usuarios.")
+
+def menu_admin():
+    """
+    Muestra el menú de opciones para el administrador.
+    El administrador puede elegir entre diferentes opciones, como mostrar el historial,
+    borrar el historial, eliminar un usuario o salir del programa.
+    """
+    while True:
+        print("---------------------------------------")
+        print("|         MENÚ ADMINISTRADOR          |")
+        print("|-------------------------------------|")
+        print("| 1.- Mostrar Historial               |")
+        print("| 2.- Borrar Historial                |")
+        print("| 3.- Eliminar usuario                |")
+        print("| 4.- Mostrar usuarios                |")
+        print("| 5.- Salir                           |")
+        print("---------------------------------------")
+        seleccion()
+
+        if opc_selected == 1:
+            mostrar_historial_admin()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 2:
+            borrar_historial()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 3:
+            eliminar_usuario()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 4:
+            mostrar_usuarios()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 5:
+            break
+        else:
+            time.sleep(1)
+            limpiar_pantalla()
+
+def menu_figuras():
+    """ Muestra el menu de figuras
+    Nos pregunta que figura deseamos realizar utilizando numeros enteros"""
+    while True:
+        print("           Generar figuras           ")
+        print("-------------------------------------")
+        print("|       ¿Que figura necesitas?      |")
+        print("|-----------------------------------|")
+        print("| 1-Triángulos                      |")
+        print("| 2-Cuadrilateros                   |")
+        print("| 3-Poligonos                       |")
+        print("| 4-Circulos (Ovalos)               |")
+        print("-------------------------------------")
+
+        seleccion()
+
+        if opc_selected == 1:
+            limpiar_pantalla()
+            menu_triangulos()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 2:
+            limpiar_pantalla()
+            menu_cuadrilateros()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 3:
+            limpiar_pantalla()
+            menu_poligonos()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        elif opc_selected == 4:
+            limpiar_pantalla()
+            menu_circulo()
+            input("Presiona Enter para continuar...")
+            limpiar_pantalla()
+        else:
+            opcion_incorrecta()
+            time.sleep(2)
+
+def generar_isoceles():
+    """Funcion en la que se realiza el proceso de un triangulo isoseles"""
+    limpiar_pantalla()
+    la1= int(input("ing"))
+    la2=int(input("ing"))
+    la3=int(input("ing"))
+    if la1 + la2 > la3 and la1 + la3 > la2 and la2 + la3 > la1:
+        if la1 == la2 or la1 == la3 or la2 == la3:
+            if la1 == la2:
+                    ladigu = la1
+            elif la1 == la3:
+                    ladigu = la1
+            else:
+                    ladigu = la2
+            for i in range(ladigu):
+                for j in range(ladigu - i - 1):
+                    print(" ", end="")
+                for k in range(2 * i + 1):
+                    print("*", end="")
+                print()
+
+def generar_equilatero():
+    """Funcion en la que se realiza el proceso para hacer un triangulo equilatero"""
+
+    limpiar_pantalla()
+    longitud = int(input("Ingrese la longitud de los lados del triángulo equilátero: "))
+    for i in range(longitud):
+        print(' ' * (longitud - i - 1), end='')
+        print('* ' * (i + 1))
+
+def generar_escaleno():
+    """Funcion en la que se realiza el proceso para hacer un triangulo escaleno """
+
+    lado1 = int(input("Ingresa la medida del primer lado"))
+    lado2 = int(input("Ingresa la medida del segundo lado"))
+    lado3 = int(input("Ingresa la medida del tercer lado"))
+    # Verificar si los lados forman un triángulo válido
+    if lado1 + lado2 <= lado3 or lado2 + lado3 <= lado1 or lado1 + lado3 <= lado2:
+        print("Los lados ingresados no forman un triángulo válido.")
+        return
+
+    # Dibujar el triángulo
+    for i in range(lado1):
+        print('*' * (i+1))
+    for i in range(lado2):
+        print('*' * (i+1))
+    for i in range(lado3):
+        print('*' * (lado3-i))
+
+# Solicitar las medidas de los lados al usuario
+lado1 = int(input("Ingrese la medida del primer lado: "))
+lado2 = int(input("Ingrese la medida del segundo lado: "))
+lado3 = int(input("Ingrese la medida del tercer lado: "))
